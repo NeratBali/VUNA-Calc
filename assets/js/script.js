@@ -19,7 +19,11 @@ function toggleTheme() {
 }
 
 var currentExpression = '';
-
+let calculationHistory=[];
+document.addEventListener("DOMContentLoaded", function () {
+  loadHistoryFromStorage();
+  renderHistory();
+});
 var currencyRates = {
   'USD': 1,
   'EUR': 0.92,
@@ -250,20 +254,34 @@ function clearResult() {
 // Calculate Result
 // ------------------------------
 function calculateResult() {
-    if (currentExpression.length === 0) return;
+    if (!currentExpression) return;
 
     try {
         let result = eval(currentExpression);
+
         if (isNaN(result) || !isFinite(result)) {
-            result = 'Error';
+            throw new Error();
         }
+
+       calculationHistory?.push({
+            expression: currentExpression,
+            words: numberToWords(result),
+            time: new Date().toLocaleTimeString()
+        });
+
+        if (calculationHistory.length > 20) calculationHistory.shift();
+
+        localStorage.setItem("calcHistory", JSON.stringify(calculationHistory));
+        renderHistory(); 
+
         currentExpression = result.toString();
         updateResult();
     } catch (e) {
-        currentExpression = 'Error';
+        currentExpression= 'Error';
         updateResult();
     }
 }
+
 
 function applyLogarithm() {
   if (left.length === 0) return;
@@ -583,3 +601,123 @@ function normalizeSpeech(text) {
     .split(" ")
     .filter(t => t.trim() !== "");
 }
+function toggleHistory() {
+  const historyCol = document.getElementById("history-column");
+  const btn = document.getElementById("toggle-history-btn");
+
+  if (!historyCol) return;
+
+  historyCol.classList.toggle("d-none");
+
+  if (historyCol.classList.contains("d-none")) {
+    btn.textContent = "Show History";
+    btn.classList.replace("btn-outline-primary", "btn-primary");
+  } else {
+    btn.textContent = "Hide History";
+    btn.classList.replace("btn-primary", "btn-outline-primary");
+  }
+}
+function saveHistoryToStorage() {
+  localStorage.setItem("calcHistory", JSON.stringify(calculationHistory));
+}
+function renderHistory() {
+  const list = document.getElementById("history-list");
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  // Empty state
+  if (calculationHistory.length === 0) {
+    const emptyTemplate = document.getElementById("history-empty-template");
+    if (emptyTemplate) {
+      list.appendChild(emptyTemplate.content.cloneNode(true));
+    }
+    return;
+  }
+  // Render items latest first
+  calculationHistory
+    .slice()
+    .reverse()
+    .forEach((item, index) => {
+      const tpl = document
+        .getElementById("history-item-template")
+        .content.cloneNode(true);
+
+      const itemEl = tpl.querySelector(".history-item");
+      tpl.querySelector(".history-item-expression").textContent =
+        item.expression;
+      tpl.querySelector(".history-item-words").textContent = item.words;
+      tpl.querySelector(".history-item-time").textContent = item.time;
+      const remarkText = tpl.querySelector(".remark-text");
+      const remarkBox = tpl.querySelector(".remark-box");
+      const remarkInput = remarkBox.querySelector("input");
+      if (item.remark) {
+        remarkText.textContent = item.remark;
+      }
+      // DELETE
+      tpl.querySelector(".btn-delete").onclick = (e) => {
+        e.stopPropagation();
+        calculationHistory.splice(index, 1);
+        saveHistoryToStorage();
+        renderHistory();
+      };
+            // SHOW REMARK INPUT
+      tpl.querySelector(".btn-remark").onclick = (e) => {
+        e.stopPropagation();
+        remarkBox.classList.remove("d-none");
+        remarkInput.focus();
+      };
+
+      // SET REMARK
+      remarkBox.querySelector(".btn-primary").onclick = (e) => {
+        e.stopPropagation();
+        item.remark = remarkInput.value.trim();
+        saveHistoryToStorage();
+        renderHistory();
+      };
+
+      // CANCEL REMARK
+      remarkBox.querySelector(".btn-outline-secondary").onclick = (e) => {
+        e.stopPropagation();
+        remarkBox.classList.add("d-none");
+      };
+          // Click to restore calculation
+      itemEl.addEventListener("click", () => {
+        currentExpression = item.expression;
+        updateResult();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+
+      list.appendChild(tpl);
+
+      // Trigger fade-in
+      setTimeout(() => {
+        itemEl.classList.add("show");
+      }, index * 50); // staggered fade-in
+    });
+}
+function loadHistoryFromStorage() {
+  const stored = localStorage.getItem("calcHistory");
+  if (stored) calculationHistory = JSON.parse(stored);
+}
+function clearHistory() {
+  if (!confirm("Are you sure you want to clear all calculation history?")) return;
+  calculationHistory = [];
+  localStorage.removeItem("calcHistory");
+  renderHistory();
+}
+document.addEventListener("DOMContentLoaded", function () {
+  const scrollBtn = document.getElementById("scroll-to-calculator");
+  if (scrollBtn) {
+    scrollBtn.addEventListener("click", () => {
+      const calculatorTop = document.querySelector(".calculator-card");
+
+      if (calculatorTop) {
+        calculatorTop.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    });
+  }
+});
